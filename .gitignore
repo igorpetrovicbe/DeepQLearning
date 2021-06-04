@@ -1,0 +1,9 @@
+Debug/
+Release/
+NewNeuralNetwork/Debug/
+NewNeuralNetwork/Release/
+.vs/
+*.user
+*.filters
+*.sln
+*.vcxproj
