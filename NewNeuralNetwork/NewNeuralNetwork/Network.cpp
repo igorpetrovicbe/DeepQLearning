@@ -5,12 +5,129 @@ float sigmoid(float x) {
 	return 1 / (1 + exp(-x));
 }
 
-float activation(float x) {
-	return sigmoid(x);
+float sigmoidDerivative(float x) {
+	return sigmoid(x) * (1 - sigmoid(x));
 }
 
-float activation_derivative(float x) {
-	return sigmoid(x) * (1 - sigmoid(x));
+float relu(float x) {
+	if (x > 0)
+		return x;
+	return 0.01 * x;
+}
+
+float reluDerivative(float x) {
+	if (x > 0)
+		return 1;
+	return 0.01;
+}
+
+float activation(float x, Activation activation) {
+	switch (activation) {
+		case SIGMOID:
+			return sigmoid(x);
+			break;
+		case RELU:
+			return relu(x);
+			break;
+		default:
+			return sigmoid(x);
+			break;
+	}
+}
+
+float activationDerivative(float x, Activation activation) {
+	switch (activation) {
+		case SIGMOID:
+			return sigmoidDerivative(x);
+			break;
+		case RELU:
+			return reluDerivative(x);
+			break;
+		default:
+			return sigmoidDerivative(x);
+			break;
+	}
+}
+
+float randomDeviation(float standardDeviation) {
+	float r = rand() % 10000;
+	r = (r - 5000) / 5000;
+	return standardDeviation * r;
+}
+
+float gaussian(float standardDeviation) {
+	float sampleSize = 100;
+	float sum = 0;
+	for (int i = 0; i < sampleSize; i++) {
+		float r = rand() % 10000;
+		r = (r - 5000) / 5000;
+		sum += r;
+	}
+	return standardDeviation * sum / sampleSize;
+}
+
+float heInitialization(float number) {
+	return gaussian(sqrt(2 / number));
+}
+
+float xavier(float number) {
+	//float standardDeviation = sqrt(6) / sqrt(number);
+	return randomDeviation(1);
+}
+
+float initWeight(float leftSize, float rightSize, Activation activation) {
+	switch (activation)
+	{
+	case SIGMOID:
+		return xavier(leftSize + rightSize);
+		break;
+	case RELU:
+		return heInitialization(leftSize);
+		break;
+	default:
+		return xavier(leftSize + rightSize);
+		break;
+	}
+}
+
+float crossEntropy(float y, float yhat) {
+	if (y == 1)
+		return -log(yhat);
+	else
+		return -log(1 - yhat);
+}
+
+void testMP() {
+	printf("\nfirst case : no threading! \n ");
+	double pi = 0.0;
+	const int iterationCount = 200000000;
+	clock_t startTime = clock();
+	for (int i = 0; i < iterationCount; i++)
+	{
+		pi += 4 * (i % 2 ? -1 : 1) / (2.0 * i + 1.0);
+	}
+	printf("Elpase Time : %.3lf sec \n", (clock() - startTime) / 1000.);
+	printf("pi = %.8f\n", pi);
+	/////////////////////////////////////////////////////////
+
+	///////////////////////////////////////////////////////////
+	printf("\nsecond case : OpenMP - threading! \n ");
+	pi = 0.0;
+	startTime = clock();
+
+	#pragma omp parallel for
+	for (int i = 0; i < iterationCount; i++)
+	{
+		pi += 4 * (i % 2 ? -1 : 1) / (2.0 * i + 1.0);
+	}
+	printf("Elpase Time : %.3lf sec \n", (clock() - startTime) / 1000.);
+	printf("pi = %.8f\n", pi);
+	/////////////////////////////////////////////////////////
+
+	/////////////////////////////////////////////////////////
+	printf("\nthird case : OpenMP - reduction set\n");
+	pi = 0.0;
+	startTime = clock();
 }
 
 Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize, float learningRate) {
@@ -23,12 +140,23 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 
 	//Init weights and biases
 	float r;
-	for (int i = 0; i < hiddenNumber; i++) {//TODO napraviti bolju inicijalizaciju tezina i ulepsati kod
+	for (int i = 0; i < hiddenNumber; i++) {
+		float previousSize, nextSize;
+		if (i == 0)
+			previousSize = inputSize;//+1 for bias?
+		else
+			previousSize = hiddenSize;
+
+		if (i == hiddenNumber - 1)
+			nextSize = outputSize;
+		else
+			nextSize = hiddenSize;
+
 		vector<Neuron> newHidden(hiddenSize);
 		for (int j = 0; j < hiddenSize; j++) {
 			Neuron neuron;
-			r = rand() % 10000;
-			neuron.bias = (r - 5000) / 5000;
+			//neuron.bias = xavier(previousSize + nextSize);
+			neuron.bias = initWeight(previousSize, nextSize, hiddenActivation);
 			neuron.out = 0;
 			neuron.gradient = 0;
 			neuron.biasDelta = 0;
@@ -38,10 +166,10 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 		}
 		hidden.push_back(newHidden);
 	}
+	float previousSize = hiddenSize;
 	for (int i = 0; i < outputSize; i++) {
 		Neuron neuron;
-		r = rand() % 10000;
-		neuron.bias = (r - 5000) / 5000;
+		neuron.bias = xavier(previousSize);
 		neuron.out = 0;
 		neuron.gradient = 0;
 		neuron.biasDelta = 0;
@@ -73,8 +201,10 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 			vector<float> newMomentums(rightSize);
 			vector<float> newVariances(rightSize);
 			for (int j = 0; j < rightSize; j++) {
-				r = rand() % 10000;
-				newWeights[j] = (r - 5000) / 5000;
+				if (k < hiddenNumber)
+					newWeights[j] = initWeight(previousSize, 0, hiddenActivation);
+				else
+					newWeights[j] = xavier(leftSize + rightSize);
 				newWeightsDelta[j] = 0;
 				newMomentums[j] = 0;
 				newVariances[j] = 0;
@@ -91,18 +221,40 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 	}
 }
 
-vector<float> Network::Propagate(vector<float>& in) {
+void Network::TestParallelism() {
+	//Input to Hidden
+	vector<float> in(inputSize);
+	in[0] = 1;
+	in[1] = 1;
 	this->input = in;
 
+	double startTime = omp_get_wtime();
+	cout << "Test no parallelism" << endl;
+	
+	double endTime = omp_get_wtime();
+	cout << endl << "\Test finished. Took: " << (endTime - startTime) * 1000 << "ms." << endl << endl;
+
+
+	startTime = omp_get_wtime();
+	cout << "Test parallelism" << endl;
+
+	endTime = omp_get_wtime();
+	cout << endl << "\tTest finished. Took: " << (endTime - startTime) * 1000 << "ms." << endl << endl;
+}
+
+vector<float> Network::Propagate(vector<float>& in) {
+	this->input = in;
+	
 	//Input to Hidden
+	#pragma omp parallel for
 	for (int i = 0; i < hiddenSize; i++) {
 		float sum = 0;
 		for (int j = 0; j < inputSize; j++) {
-			sum += input[j] * weight[0][j][i];
+			sum += input[j] * weight[0][j][i];//Paralelizacija izgleda da je spora, treba malo jos testirati
 		}
 		sum += hidden[0][i].bias;
 		hidden[0][i].in = sum;
-		hidden[0][i].out = activation(sum);
+		hidden[0][i].out = activation(sum, hiddenActivation);
 	}
 
 	//Hidden to Hidden
@@ -114,7 +266,7 @@ vector<float> Network::Propagate(vector<float>& in) {
 			}
 			sum += hidden[k][i].bias;
 			hidden[k][i].in = sum;
-			hidden[k][i].out = activation(sum);
+			hidden[k][i].out = activation(sum, hiddenActivation);
 		}
 	}
 
@@ -126,7 +278,7 @@ vector<float> Network::Propagate(vector<float>& in) {
 		}
 		sum += output[i].bias;
 		output[i].in = sum;
-		output[i].out = activation(sum);
+		output[i].out = sigmoid(sum);//sigmoid u zadnjem
 	}
 
 	vector<float> out;
@@ -156,11 +308,13 @@ vector<float> Network::Adam(float gradient, float momentum, float variance) {
 	return ret;
 }
 
-void Network::Fit(vector<float>& in, vector<float>& correctOutput) {
+void Network::Fit(vector<float>& in, vector<float>& correctOutput) { //TODO: Cross entropy loss
 	vector<float> predicted = Propagate(in);
+
 	//CORRECT HIDDEN TO OUTPUT AND SET OUTPUT GRADIENTS
 	for (int i = 0; i < outputSize; i++) {
-		float gradient = (output[i].out - correctOutput[i]) * activation_derivative(output[i].in);
+		loss += pow(output[i].out - correctOutput[i], 2);
+		float gradient = (output[i].out - correctOutput[i]) * sigmoidDerivative(output[i].in);//sigmoid u zadnjem
 		output[i].gradient = gradient;
 		output[i].biasDelta += gradient;
 		for (int j = 0; j < hiddenSize; j++) {
@@ -174,7 +328,7 @@ void Network::Fit(vector<float>& in, vector<float>& correctOutput) {
 			for (int j = 0; j < outputSize; j++) {
 				gradientSum += output[j].gradient * weight[hiddenNumber][i][j];
 			}
-			float gradient = gradientSum * activation_derivative(hidden[hiddenNumber - 1][i].in);
+			float gradient = gradientSum * activationDerivative(hidden[hiddenNumber - 1][i].in, hiddenActivation);
 			hidden[hiddenNumber - 1][i].gradient = gradient;
 			hidden[hiddenNumber - 1][i].biasDelta += gradient;
 			for (int j = 0; j < hiddenSize; j++) {
@@ -190,7 +344,7 @@ void Network::Fit(vector<float>& in, vector<float>& correctOutput) {
 				for (int j = 0; j < hiddenSize; j++) {
 					gradientSum += hidden[k + 1][j].gradient * weight[k + 1][i][j];
 				}
-				float gradient = gradientSum * activation_derivative(hidden[k][i].in);
+				float gradient = gradientSum * activationDerivative(hidden[k][i].in, hiddenActivation);
 				hidden[k][i].gradient = gradient;
 				hidden[k][i].biasDelta += gradient;
 				for (int j = 0; j < hiddenSize; j++) {
@@ -200,12 +354,13 @@ void Network::Fit(vector<float>& in, vector<float>& correctOutput) {
 		}
 	}
 	//CORRECT INPUT TO HIDDEN; IF HIDDENSIZE > 1
+	#pragma omp parallel for
 	for (int i = 0; i < hiddenSize; i++) {
 		float gradientSum = 0;
 		for (int j = 0; j < hiddenSize; j++) {
 			gradientSum += hidden[1][j].gradient * weight[1][i][j];
 		}
-		float gradient = gradientSum * activation_derivative(hidden[0][i].in);
+		float gradient = gradientSum * activationDerivative(hidden[0][i].in, hiddenActivation);
 		hidden[0][i].biasDelta += gradient;
 		for (int j = 0; j < inputSize; j++) {
 			weightDelta[0][j][i] += gradient * input[j];
@@ -223,14 +378,14 @@ void Network::UpdateWeights() {
 
 			float currentMomentum = hidden[i][j].momentum;
 			float currentVariance = hidden[i][j].variance;
-			
+
 			adamOut = Adam(gradient, currentMomentum, currentVariance);
 
 			//hidden[i][j].bias -= GradientDescent(gradient);
 			hidden[i][j].bias -= adamOut[0];
 			hidden[i][j].momentum = adamOut[1];
 			hidden[i][j].variance = adamOut[2];
-			
+
 			hidden[i][j].biasDelta = 0;
 		}
 	}
@@ -246,7 +401,7 @@ void Network::UpdateWeights() {
 		output[i].bias -= adamOut[0];
 		output[i].momentum = adamOut[1];
 		output[i].variance = adamOut[2];
-		
+
 		output[i].biasDelta = 0;
 	}
 	//Update Weights
@@ -284,6 +439,16 @@ void Network::UpdateWeights() {
 	}
 	batchCount = 0;
 	iteration++;
+}
+
+float Network::resetLoss() {
+	float ret = loss;
+	loss = 0;
+	return ret;
+}
+
+void Network::setLearningRate(float learningRate) {
+	this->learningRate = learningRate;
 }
 
 Network::~Network()

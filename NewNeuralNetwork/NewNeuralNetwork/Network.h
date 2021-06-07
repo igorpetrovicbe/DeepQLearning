@@ -5,7 +5,7 @@
 #include <time.h>
 #include <conio.h>
 #include <iomanip>
-//#include <armadillo>
+#include <omp.h>
 #include <vector>
 
 using namespace std;
@@ -20,6 +20,8 @@ struct Neuron {
 	float variance;
 };
 
+enum Activation { SIGMOID, RELU };
+
 class Network
 {
 private:
@@ -33,6 +35,8 @@ private:
 	float varianceDecay = 0.999;
 	float epsilon = 0.00000001;
 	int iteration = 0;
+	Activation hiddenActivation = SIGMOID;
+	float loss = 0;
 	
 	vector<float> input;
 	vector<Neuron> output;
@@ -45,11 +49,14 @@ private:
 
 	float GradientDescent(float gradient);
 	vector<float> Adam(float gradient, float momentum, float variance);
+	void TestParallelism();
 public:
 	Network(int, int, int, int, float);
 	vector<float> Propagate(vector<float>&);
 	void Fit(vector<float>&, vector<float>&);
 	void UpdateWeights();
+	float resetLoss();
+	void setLearningRate(float);
 	~Network();
 };
 
