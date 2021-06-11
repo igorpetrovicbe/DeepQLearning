@@ -20,7 +20,7 @@ struct Neuron {
 	float variance;
 };
 
-enum Activation { SIGMOID, RELU };
+enum Activation { SIGMOID, RELU, SOFTMAX };
 
 class Network
 {
@@ -35,7 +35,8 @@ private:
 	float varianceDecay = 0.999;
 	float epsilon = 0.00000001;
 	int iteration = 0;
-	Activation hiddenActivation = SIGMOID;
+	Activation hiddenActivation = RELU;
+	Activation outputActivation = SOFTMAX;
 	float loss = 0;
 	
 	vector<float> input;

@@ -9,7 +9,7 @@ float sigmoidDerivative(float x) {
 	return sigmoid(x) * (1 - sigmoid(x));
 }
 
-float relu(float x) {
+float relu(float x) { //leaky RELU
 	if (x > 0)
 		return x;
 	return 0.01 * x;
@@ -21,31 +21,69 @@ float reluDerivative(float x) {
 	return 0.01;
 }
 
+float crossEntropy(vector<float> expected, vector<float> predicted) {
+	float sum = 0;
+	for (int i = 0; i < expected.size(); i++) {
+		sum += expected[i] * log(predicted[i]);
+	}
+	return -sum;
+}
+
+float crossEntropyLoss(float predicted) {
+	return -log(predicted);
+}
+
+float crossEntropyLossDerivative(float predicted) {
+	return -1 / predicted;
+}
+
+float softmaxDerivative(float out1, float out2, bool same) {
+	if (same)
+		return out1 * (1 - out1);
+	else
+		return -out1 * out2;
+}
+
+void softmax(vector<float>& x) {
+	float expSum = 0;
+	float maxOut = x[0];
+	for (int i = 0; i < x.size(); i++) {
+		if (x[i] > maxOut)
+			maxOut = x[i];
+	}
+	for (int i = 0; i < x.size(); i++)
+		expSum += exp(x[i] - maxOut);
+	for (int i = 0; i < x.size(); i++) {
+		float shiftx = x[i] - maxOut;
+		x[i] = exp(shiftx) / expSum;
+	}
+}
+
 float activation(float x, Activation activation) {
 	switch (activation) {
-		case SIGMOID:
-			return sigmoid(x);
-			break;
-		case RELU:
-			return relu(x);
-			break;
-		default:
-			return sigmoid(x);
-			break;
+	case SIGMOID:
+		return sigmoid(x);
+		break;
+	case RELU:
+		return relu(x);
+		break;
+	default:
+		return sigmoid(x);
+		break;
 	}
 }
 
 float activationDerivative(float x, Activation activation) {
 	switch (activation) {
-		case SIGMOID:
-			return sigmoidDerivative(x);
-			break;
-		case RELU:
-			return reluDerivative(x);
-			break;
-		default:
-			return sigmoidDerivative(x);
-			break;
+	case SIGMOID:
+		return sigmoidDerivative(x);
+		break;
+	case RELU:
+		return reluDerivative(x);
+		break;
+	default:
+		return sigmoidDerivative(x);
+		break;
 	}
 }
 
@@ -84,17 +122,13 @@ float initWeight(float leftSize, float rightSize, Activation activation) {
 	case RELU:
 		return heInitialization(leftSize);
 		break;
+	case SOFTMAX:
+		return xavier(leftSize + rightSize);
+		break;
 	default:
 		return xavier(leftSize + rightSize);
 		break;
 	}
-}
-
-float crossEntropy(float y, float yhat) {
-	if (y == 1)
-		return -log(yhat);
-	else
-		return -log(1 - yhat);
 }
 
 void testMP() {
@@ -115,7 +149,7 @@ void testMP() {
 	pi = 0.0;
 	startTime = clock();
 
-	#pragma omp parallel for
+#pragma omp parallel for
 	for (int i = 0; i < iterationCount; i++)
 	{
 		pi += 4 * (i % 2 ? -1 : 1) / (2.0 * i + 1.0);
@@ -170,6 +204,7 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 	for (int i = 0; i < outputSize; i++) {
 		Neuron neuron;
 		neuron.bias = xavier(previousSize);
+		neuron.bias = initWeight(previousSize, 0, outputActivation);
 		neuron.out = 0;
 		neuron.gradient = 0;
 		neuron.biasDelta = 0;
@@ -202,9 +237,9 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 			vector<float> newVariances(rightSize);
 			for (int j = 0; j < rightSize; j++) {
 				if (k < hiddenNumber)
-					newWeights[j] = initWeight(previousSize, 0, hiddenActivation);
+					newWeights[j] = initWeight(leftSize, rightSize, hiddenActivation);
 				else
-					newWeights[j] = xavier(leftSize + rightSize);
+					newWeights[j] = initWeight(leftSize, rightSize, outputActivation);
 				newWeightsDelta[j] = 0;
 				newMomentums[j] = 0;
 				newVariances[j] = 0;
@@ -230,7 +265,7 @@ void Network::TestParallelism() {
 
 	double startTime = omp_get_wtime();
 	cout << "Test no parallelism" << endl;
-	
+
 	double endTime = omp_get_wtime();
 	cout << endl << "\Test finished. Took: " << (endTime - startTime) * 1000 << "ms." << endl << endl;
 
@@ -244,9 +279,9 @@ void Network::TestParallelism() {
 
 vector<float> Network::Propagate(vector<float>& in) {
 	this->input = in;
-	
+
 	//Input to Hidden
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for (int i = 0; i < hiddenSize; i++) {
 		float sum = 0;
 		for (int j = 0; j < inputSize; j++) {
@@ -271,6 +306,7 @@ vector<float> Network::Propagate(vector<float>& in) {
 	}
 
 	//Hidden to Output
+	vector<float> outSoft(outputSize);
 	for (int i = 0; i < outputSize; i++) {
 		float sum = 0;
 		for (int j = 0; j < hiddenSize; j++) {
@@ -278,7 +314,15 @@ vector<float> Network::Propagate(vector<float>& in) {
 		}
 		sum += output[i].bias;
 		output[i].in = sum;
-		output[i].out = sigmoid(sum);//sigmoid u zadnjem
+		outSoft[i] = sum;
+		if (outputActivation != SOFTMAX)
+			output[i].out = activation(sum, outputActivation);
+	}
+	//Softmax u zadnjem
+	if (outputActivation == SOFTMAX) {
+		softmax(outSoft);
+		for (int i = 0; i < outputSize; i++)
+			output[i].out = outSoft[i];
 	}
 
 	vector<float> out;
@@ -308,13 +352,29 @@ vector<float> Network::Adam(float gradient, float momentum, float variance) {
 	return ret;
 }
 
-void Network::Fit(vector<float>& in, vector<float>& correctOutput) { //TODO: Cross entropy loss
+void Network::Fit(vector<float>& in, vector<float>& correctOutput) {
 	vector<float> predicted = Propagate(in);
 
+	int correctIndex = 0;
+	for (int i = 0; i < outputSize; i++)
+		if (correctOutput[i] == 1) {
+			correctIndex = i;
+			break;
+		}
+	if (outputActivation == SOFTMAX) {
+		loss += crossEntropyLoss(predicted[correctIndex]);
+	}
 	//CORRECT HIDDEN TO OUTPUT AND SET OUTPUT GRADIENTS
 	for (int i = 0; i < outputSize; i++) {
-		loss += pow(output[i].out - correctOutput[i], 2);
-		float gradient = (output[i].out - correctOutput[i]) * sigmoidDerivative(output[i].in);//sigmoid u zadnjem
+		float gradient;
+		if (outputActivation != SOFTMAX) {
+			loss += pow(output[i].out - correctOutput[i], 2);//SSE loss
+			gradient = (output[i].out - correctOutput[i]) * sigmoidDerivative(output[i].in);
+		}
+		else {
+			float error = crossEntropyLossDerivative(output[correctIndex].out);
+			gradient = error * softmaxDerivative(output[correctIndex].out, output[i].out, i == correctIndex);
+		}
 		output[i].gradient = gradient;
 		output[i].biasDelta += gradient;
 		for (int j = 0; j < hiddenSize; j++) {
@@ -354,7 +414,7 @@ void Network::Fit(vector<float>& in, vector<float>& correctOutput) { //TODO: Cro
 		}
 	}
 	//CORRECT INPUT TO HIDDEN; IF HIDDENSIZE > 1
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for (int i = 0; i < hiddenSize; i++) {
 		float gradientSum = 0;
 		for (int j = 0; j < hiddenSize; j++) {
