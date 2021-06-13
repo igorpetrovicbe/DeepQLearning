@@ -6,7 +6,6 @@
 #include <conio.h>
 #include <iomanip>
 #include <omp.h>
-#include <vector>
 
 using namespace std;
 

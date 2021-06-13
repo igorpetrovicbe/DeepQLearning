@@ -1,12 +1,10 @@
 #pragma once
 #include <iostream>
 #include <vector>
-#include <fstream>
 #include <time.h>
 #include <conio.h>
 #include <iomanip>
 #include <omp.h>
-#include <vector>
 
 using namespace std;
 
@@ -20,7 +18,7 @@ struct Neuron {
 	float variance;
 };
 
-enum Activation { SIGMOID, RELU, SOFTMAX };
+enum Activation { SIGMOID, RELU, SOFTMAX, NONE };
 
 class Network
 {
@@ -36,7 +34,7 @@ private:
 	float epsilon = 0.00000001;
 	int iteration = 0;
 	Activation hiddenActivation = RELU;
-	Activation outputActivation = SOFTMAX;
+	Activation outputActivation = NONE;
 	float loss = 0;
 	
 	vector<float> input;
@@ -50,9 +48,9 @@ private:
 
 	float GradientDescent(float gradient);
 	vector<float> Adam(float gradient, float momentum, float variance);
-	void TestParallelism();
 public:
 	Network(int, int, int, int, float);
+	void CopyWeights(Network* source);
 	vector<float> Propagate(vector<float>&);
 	void Fit(vector<float>&, vector<float>&);
 	void UpdateWeights();

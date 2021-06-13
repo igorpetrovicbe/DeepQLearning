@@ -67,6 +67,9 @@ float activation(float x, Activation activation) {
 	case RELU:
 		return relu(x);
 		break;
+	case NONE:
+		return x;
+		break;
 	default:
 		return sigmoid(x);
 		break;
@@ -80,6 +83,9 @@ float activationDerivative(float x, Activation activation) {
 		break;
 	case RELU:
 		return reluDerivative(x);
+		break;
+	case NONE:
+		return 1;
 		break;
 	default:
 		return sigmoidDerivative(x);
@@ -124,6 +130,9 @@ float initWeight(float leftSize, float rightSize, Activation activation) {
 		break;
 	case SOFTMAX:
 		return xavier(leftSize + rightSize);
+		break;
+	case NONE:
+		return heInitialization(leftSize);
 		break;
 	default:
 		return xavier(leftSize + rightSize);
@@ -203,7 +212,6 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 	float previousSize = hiddenSize;
 	for (int i = 0; i < outputSize; i++) {
 		Neuron neuron;
-		neuron.bias = xavier(previousSize);
 		neuron.bias = initWeight(previousSize, 0, outputActivation);
 		neuron.out = 0;
 		neuron.gradient = 0;
@@ -256,25 +264,34 @@ Network::Network(int inputSize, int hiddenSize, int hiddenNumber, int outputSize
 	}
 }
 
-void Network::TestParallelism() {
-	//Input to Hidden
-	vector<float> in(inputSize);
-	in[0] = 1;
-	in[1] = 1;
-	this->input = in;
+void Network::CopyWeights(Network* source) {
+	//Copy Biases
+	for (int i = 0; i < hiddenNumber; i++)
+		for (int j = 0; j < hiddenSize; j++)
+			hidden[i][j].bias = source->hidden[i][j].bias;
 
-	double startTime = omp_get_wtime();
-	cout << "Test no parallelism" << endl;
+	for (int i = 0; i < outputSize; i++)
+		output[i].bias = source->output[i].bias;
 
-	double endTime = omp_get_wtime();
-	cout << endl << "\Test finished. Took: " << (endTime - startTime) * 1000 << "ms." << endl << endl;
-
-
-	startTime = omp_get_wtime();
-	cout << "Test parallelism" << endl;
-
-	endTime = omp_get_wtime();
-	cout << endl << "\tTest finished. Took: " << (endTime - startTime) * 1000 << "ms." << endl << endl;
+	//Update Weights
+	for (int k = 0; k <= hiddenNumber; k++) {
+		int leftSize, rightSize;
+		if (k == 0) {
+			leftSize = inputSize;
+			rightSize = hiddenSize;
+		}
+		else if (k == hiddenNumber) {
+			leftSize = hiddenSize;
+			rightSize = outputSize;
+		}
+		else {
+			leftSize = hiddenSize;
+			rightSize = hiddenSize;
+		}
+		for (int i = 0; i < leftSize; i++)
+			for (int j = 0; j < rightSize; j++)
+				weight[k][i][j] = source->weight[k][i][j];
+	}
 }
 
 vector<float> Network::Propagate(vector<float>& in) {
@@ -369,7 +386,7 @@ void Network::Fit(vector<float>& in, vector<float>& correctOutput) {
 		float gradient;
 		if (outputActivation != SOFTMAX) {
 			loss += pow(output[i].out - correctOutput[i], 2);//SSE loss
-			gradient = (output[i].out - correctOutput[i]) * sigmoidDerivative(output[i].in);
+			gradient = (output[i].out - correctOutput[i]) * activationDerivative(output[i].in, outputActivation);
 		}
 		else {
 			float error = crossEntropyLossDerivative(output[correctIndex].out);
